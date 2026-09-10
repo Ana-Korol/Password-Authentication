@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Формочка 1</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <form id="myForm">
+        <fieldset>
+            <div class="row">
+                <div class="col labels">
+                    <label for="Name" class="required">Name</label>
+                    <label for="Password" class="required">Password</label>
+                </div>
+                <div class="col inputs">
+                    <input name="Name" id="Name" placeholder="Введите своё имя" required>
+                    <input name="Password" id="Password" type="password" placeholder="Введите свой пароль" required>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <input type="submit" value="Войти">
+                <button type="button" class="register-btn" id="registerBtn">Зарегистрироваться</button>
+            </div>
+        </fieldset>
+    </form>
+
+    <script src="script.js"></script>
+</body>
+</html>
