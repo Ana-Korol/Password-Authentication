@@ -1,0 +1,23 @@
+# Visual Studio temporary files
+.vs/
+x64/
+Debug/
+Release/
+*.user
+*.suo
+
+# NuGet packages
+packages/
+*.nupkg
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+
+# Database (если не хочешь заливать базу, но если препод просил - убери эту строку)
+# *.db 
+
+# VS Code
+.vscode/
