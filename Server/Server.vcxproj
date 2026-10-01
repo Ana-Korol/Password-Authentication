@@ -130,13 +130,11 @@
     <ClCompile Include="functions.cpp" />
     <ClCompile Include="Server.cpp" />
     <ClCompile Include="sqlite3.c" />
-    <ClCompile Include="Stribog.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="functions.h" />
     <ClInclude Include="httplib.h" />
     <ClInclude Include="sqlite3.h" />
-    <ClInclude Include="Stribog.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

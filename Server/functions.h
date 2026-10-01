@@ -45,4 +45,10 @@ std::string parseJSONNumber(const std::string& json, const std::string& key);
 // === TIMESTAMP ===
 bool isTimestampValid(const std::string& timestampStr, long long maxAgeMs);
 
+// === ФИКТИВНАЯ СОЛЬ ===
+// Генерирует детерминированную "соль" для несуществующего пользователя.
+// Нужна, чтобы злоумышленник не мог отличить существующего пользователя
+// от несуществующего по формату ответа /salt.
+std::string fakeSalt(const std::string& login);
+
 #endif // FUNCTIONS_H

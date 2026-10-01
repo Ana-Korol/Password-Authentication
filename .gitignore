@@ -3,6 +3,12 @@
 x64/
 Debug/
 Release/
+*.obj
+*.log
+*.tlog
+*.pdb
+*.idb
+*.ilk
 *.user
 *.suo
 
@@ -18,6 +24,7 @@ packages/
 
 
 *.db 
+**/database.db
 
 # VS Code
 .vscode/

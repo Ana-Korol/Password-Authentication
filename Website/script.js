@@ -307,9 +307,4 @@
         }
     });
 
-    // ВРЕМЕННО: для отладки
-    window.generateSalt = generateSalt;
-    window.hashPassword = hashPassword;
-    window.fetchProfile = fetchProfile;
-    window.fetchSalt = fetchSalt;
 })();

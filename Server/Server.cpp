@@ -71,6 +71,11 @@ int main() {
     const int MAX_FAILS = 5;                    // максимум неудачных попыток
     const int LOCK_DURATION_SEC = 300;          // блокировка на 5 минут (300 секунд)
 
+    // === RATE LIMIT ПО IP ===
+    std::map<std::string, LoginAttempt> ipAttempts;
+    const int MAX_IP_FAILS = 20;              // 20 неудач с одного IP
+    const int IP_LOCK_DURATION_SEC = 300;     // блокировка на 5 минут
+
     // === ХРАНИЛИЩЕ СЕССИЙ ===
     std::map<std::string, Session> sessions;
     const int SESSION_DURATION_SEC = 1800;  // 30 минут
@@ -110,7 +115,27 @@ int main() {
             return;
         }
 
-        std::cout << "[LOG] Запрос соли для: " << login << std::endl;
+        // === RATE LIMIT НА /salt ===
+        // 10 запросов в минуту на логин
+        static std::map<std::string, std::pair<int, std::chrono::steady_clock::time_point>> saltLimits;
+        const int SALT_MAX_REQUESTS = 10;
+        const int SALT_WINDOW_SEC = 60;
+
+        auto now = std::chrono::steady_clock::now();
+        auto& entry = saltLimits[login];
+
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - entry.second).count() >= SALT_WINDOW_SEC) {
+            entry.first = 0;
+            entry.second = now;
+        }
+
+        entry.first++;
+
+        if (entry.first > SALT_MAX_REQUESTS) {
+            res.status = 429;
+            res.set_content("ERROR: too many requests", "text/plain; charset=utf-8");
+            return;
+        }
 
         // Ищем соль в БД
         std::string sql = "SELECT salt FROM users WHERE login = '" + login + "';";
@@ -123,18 +148,17 @@ int main() {
                 // Пользователь найден — возвращаем его соль
                 std::string salt = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
                 res.set_content(salt, "text/plain; charset=utf-8");
-                std::cout << "[LOG] Соль найдена: " << salt << std::endl;
                 sqlite3_finalize(stmt);
                 return;
             }
             sqlite3_finalize(stmt);
         }
 
-        // Пользователь не найден — возвращаем случайную соль
-        // (чтобы злоумышленник не мог определить, существует ли пользователь)
-        std::string fakeSalt = "00000000000000000000000000000000";
-        res.set_content(fakeSalt, "text/plain; charset=utf-8");
-        std::cout << "[LOG] Пользователь не найден, возвращаем фиктивную соль" << std::endl;
+        // Пользователь не найден — возвращаем детерминированную фиктивную соль
+        // (чтобы злоумышленник не мог определить, существует ли пользователь,
+        //  по формату соли — у нас всегда hex из 32 символов)
+        std::string fakeSaltValue = fakeSalt(login);
+        res.set_content(fakeSaltValue, "text/plain; charset=utf-8");
     });
 
     // === ОБРАБОТЧИК /register ===
@@ -147,10 +171,6 @@ int main() {
         std::string salt = parseJSON(req.body, "salt");
         std::string timestamp = parseJSONNumber(req.body, "timestamp");
 
-        std::cout << "[LOG] Попытка регистрации: " << login << std::endl;
-        std::cout << "[LOG] Hash: " << hash << std::endl;
-        std::cout << "[LOG] Salt: " << salt << std::endl;
-
         // === ПРОВЕРКА TIMESTAMP ===
         if (!isTimestampValid(timestamp, 3000)) {
             res.set_content("OK: \xd0\x97\xd0\xb0\xd0\xbf\xd1\x80\xd0\xbe\xd1\x81 \xd1\x83\xd1\x81\xd1\x82\xd0\xb0\xd1\x80\xd0\xb5\xd0\xbb. \xd0\x9e\xd0\xb1\xd0\xbd\xd0\xbe\xd0\xb2\xd0\xb8\xd1\x82\xd0\xb5 \xd1\x81\xd1\x82\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x86\xd1\x83", "text/plain; charset=utf-8");
@@ -160,6 +180,28 @@ int main() {
         // Проверка на пустые поля
         if (login.empty() || hash.empty() || salt.empty()) {
             res.set_content("OK: \xd0\x9d\xd0\xb5\xd0\xb2\xd0\xb5\xd1\x80\xd0\xbd\xd1\x8b\xd0\xb5 \xd0\xb4\xd0\xb0\xd0\xbd\xd0\xbd\xd1\x8b\xd0\xb5", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // === RATE LIMIT НА /register ===
+        // 5 запросов в минуту на логин
+        static std::map<std::string, std::pair<int, std::chrono::steady_clock::time_point>> registerLimits;
+        const int REG_MAX_REQUESTS = 5;
+        const int REG_WINDOW_SEC = 60;
+
+        auto now = std::chrono::steady_clock::now();
+        auto& entry = registerLimits[login];
+
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - entry.second).count() >= REG_WINDOW_SEC) {
+            entry.first = 0;
+            entry.second = now;
+        }
+
+        entry.first++;
+
+        if (entry.first > REG_MAX_REQUESTS) {
+            res.status = 429;
+            res.set_content("ERROR: too many requests", "text/plain; charset=utf-8");
             return;
         }
 
@@ -177,7 +219,6 @@ int main() {
         if (rc == SQLITE_ROW) {
             sqlite3_finalize(stmt);
             res.set_content("OK: \xd0\x9f\xd0\xbe\xd0\xbb\xd1\x8c\xd0\xb7\xd0\xbe\xd0\xb2\xd0\xb0\xd1\x82\xd0\xb5\xd0\xbb\xd1\x8c \xd1\x83\xd0\xb6\xd0\xb5 \xd1\x81\xd1\x83\xd1\x89\xd0\xb5\xd1\x81\xd1\x82\xd0\xb2\xd1\x83\xd0\xb5\xd1\x82", "text/plain; charset=utf-8");
-            std::cout << "[LOG] Регистрация отклонена: пользователь уже существует" << std::endl;
             return;
         }
         sqlite3_finalize(stmt);
@@ -188,16 +229,16 @@ int main() {
 
         if (executeSQL(db, insertSQL)) {
             res.set_content("OK: \xd0\xa0\xd0\xb5\xd0\xb3\xd0\xb8\xd1\x81\xd1\x82\xd1\x80\xd0\xb0\xd1\x86\xd0\xb8\xd1\x8f \xd1\x83\xd1\x81\xd0\xbf\xd0\xb5\xd1\x88\xd0\xbd\xd0\xb0", "text/plain; charset=utf-8");
-            std::cout << "[LOG] Регистрация успешна: " << login << std::endl;
+            
         }
         else {
             res.set_content("OK: \xd0\x9e\xd1\x88\xd0\xb8\xd0\xb1\xd0\xba\xd0\xb0 \xd1\x80\xd0\xb5\xd0\xb3\xd0\xb8\xd1\x81\xd1\x82\xd1\x80\xd0\xb0\xd1\x86\xd0\xb8\xd0\xb8", "text/plain; charset=utf-8");
-            std::cout << "[LOG] Ошибка регистрации: " << login << std::endl;
+            
         }
     });
 
     // === ОБРАБОТЧИК /login ===
-    svr.Post("/login", [&db, &loginAttempts, &sessions, MAX_FAILS, LOCK_DURATION_SEC, SESSION_DURATION_SEC](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/login", [&db, &loginAttempts, &ipAttempts, &sessions, MAX_FAILS, LOCK_DURATION_SEC, MAX_IP_FAILS, IP_LOCK_DURATION_SEC, SESSION_DURATION_SEC](const httplib::Request& req, httplib::Response& res) {
         res.set_header("Content-Type", "text/plain; charset=utf-8");
 
         // Парсим JSON
@@ -205,8 +246,13 @@ int main() {
         std::string hash = parseJSON(req.body, "hash");
         std::string timestamp = parseJSONNumber(req.body, "timestamp");
 
-        std::cout << "[LOG] Попытка входа: " << login << std::endl;
-        std::cout << "[LOG] Hash: " << hash << std::endl;
+        // === ПРОВЕРКА БЛОКИРОВКИ ПО IP ===
+        std::string clientIp = req.remote_addr;
+        if (isLocked(clientIp, ipAttempts)) {
+            res.status = 429;
+            res.set_content("OK: \xd0\xa1\xd0\xbb\xd0\xb8\xd1\x88\xd0\xba\xd0\xbe\xd0\xbc \xd0\xbc\xd0\xbd\xd0\xbe\xd0\xb3\xd0\xbe \xd0\xbf\xd0\xbe\xd0\xbf\xd1\x8b\xd1\x82\xd0\xbe\xd0\xba \xd1\x81 \xd0\xb2\xd0\xb0\xd1\x88\xd0\xb5\xd0\xb3\xd0\xbe IP", "text/plain; charset=utf-8");
+            return;
+        }
 
         // === ПРОВЕРКА TIMESTAMP ===
         if (!isTimestampValid(timestamp, 3000)) {
@@ -221,7 +267,7 @@ int main() {
 
         // === ПРОВЕРКА БЛОКИРОВКИ ===
         if (isLocked(login, loginAttempts)) {
-            std::cout << "[RATE LIMIT] Логин '" << login << "' заблокирован" << std::endl;
+            
             res.set_content("OK: \xd0\xa1\xd0\xbb\xd0\xb8\xd1\x88\xd0\xba\xd0\xbe\xd0\xbc \xd0\xbc\xd0\xbd\xd0\xbe\xd0\xb3\xd0\xbe \xd0\xbf\xd0\xbe\xd0\xbf\xd1\x8b\xd1\x82\xd0\xbe\xd0\xba. \xd0\x9f\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb1\xd1\x83\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xbe\xd0\xb7\xd0\xb6\xd0\xb5", "text/plain; charset=utf-8");
             return;
         }
@@ -237,37 +283,26 @@ int main() {
             rc = sqlite3_step(stmt);
             if (rc == SQLITE_ROW) {
                 std::string dbHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-
                 if (dbHash == hash) {
                     authSuccess = true;
-                    std::cout << "[LOG] Успешный вход: " << login << std::endl;
                 }
-                else {
-                    std::cout << "[LOG] Неверный пароль для: " << login << std::endl;
-                }
-            }
-            else {
-                std::cout << "[LOG] Пользователь не найден: " << login << std::endl;
             }
             sqlite3_finalize(stmt);
-        }
-        else {
-            std::cout << "[LOG] Ошибка БД при входе: " << login << std::endl;
         }
 
         // Единый ответ для всех ошибок + rate limiting
         if (authSuccess) {
             resetFails(login, loginAttempts);
+            resetFails(clientIp, ipAttempts);  // ← сбрасываем и IP-счётчик
 
             // === СОЗДАЁМ СЕССИЮ ===
             std::string sessionId = createSession(login, sessions, SESSION_DURATION_SEC);
-
-            // Возвращаем session_id в ответе
             res.set_content("OK: \xd0\x92\xd1\x85\xd0\xbe\xd0\xb4 \xd1\x83\xd1\x81\xd0\xbf\xd0\xb5\xd1\x88\xd0\xbd\xd1\x8b\xd0\xb9|" + sessionId, "text/plain; charset=utf-8");
         }
         else {
             recordFail(login, loginAttempts, MAX_FAILS, LOCK_DURATION_SEC);
-            res.set_content("OK: \xd0\x9d\xd0\xb5\xd0\xb2\xd0\xb5\xd1\x80\xd0\xbd\xd1\x8b\xd0\xb9 \xd0\xbb\xd0\xbe\xd0\xb3\xd0\xb8\xd0\xbd \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xbf\xd0\xb0\xd1\x80\xd0\xbe\xd0\xbb\xd1\x8c", "text/plain; charset=utf-8");
+            recordFail(clientIp, ipAttempts, MAX_IP_FAILS, IP_LOCK_DURATION_SEC);  // ← пишем и IP
+            res.set_content("OK: \xd0\x9d\xd0\xb5\xd0\xb2\xd0\xb5\xd1\x80\xd0\xbd\xd1\x8b\xd0\xb9 \xd0\xbb\xd0\xbe\xd0\xb3\xd0\xb8\xd0\xbd \xd0\xb8\u043b\u0438 \xd0\xbf\xd0\xb0\xd1\x80\u043e\u043b\u044c", "text/plain; charset=utf-8");
         }
     });
 
@@ -301,7 +336,6 @@ int main() {
             return;
         }
 
-        std::cout << "[PROFILE] Запрос профиля для: " << login << std::endl;
         res.set_content("OK: \xd0\x92\xd1\x8b \xd0\xb2\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8 \xd0\xba\xd0\xb0\xd0\xba " + login, "text/plain; charset=utf-8");
         });
 

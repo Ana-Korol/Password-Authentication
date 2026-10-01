@@ -141,3 +141,34 @@ bool isTimestampValid(const std::string& timestampStr, long long maxAgeMs) {
 
     return true;
 }
+
+// === ФИКТИВНАЯ СОЛЬ ===
+std::string fakeSalt(const std::string& login) {
+    // Детерминированный хеш от логина + секрет.
+    // Результат — 32 hex-символа (как настоящая соль).
+    const std::string SECRET = "server_secret_pepper_2026_password_auth";
+
+    // Простой хеш на основе std::hash
+    std::hash<std::string> hasher;
+    std::string data = login + SECRET;
+
+    // Собираем 32 hex-символа из нескольких прогонов
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+
+    // Первые 16 символов
+    size_t h1 = hasher(data);
+    ss << std::setw(16) << h1;
+
+    // Ещё 16 символов (хеш от хеша)
+    size_t h2 = hasher(std::to_string(h1) + SECRET);
+    ss << std::setw(16) << h2;
+
+    std::string result = ss.str();
+
+    // На всякий случай — обрезаем/дополняем до 32
+    if (result.length() > 32) result = result.substr(0, 32);
+    while (result.length() < 32) result += "0";
+
+    return result;
+}
