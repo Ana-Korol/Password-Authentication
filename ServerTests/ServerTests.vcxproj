@@ -120,11 +120,19 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\Server\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets" Condition="Exists('..\Server\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" />
+    <Import Project="..\Server\packages\openssl-vc141-static-x86_64.1.1.0\build\native\openssl-vc141-static-x86_64.targets" Condition="Exists('..\Server\packages\openssl-vc141-static-x86_64.1.1.0\build\native\openssl-vc141-static-x86_64.targets')" />
+    <Import Project="..\Server\packages\PicoJSON.1.3.0\build\native\picojson.targets" Condition="Exists('..\Server\packages\PicoJSON.1.3.0\build\native\picojson.targets')" />
+    <Import Project="..\Server\packages\jwt-cpp.0.7.0\build\native\jwt-cpp.targets" Condition="Exists('..\Server\packages\jwt-cpp.0.7.0\build\native\jwt-cpp.targets')" />
+    <Import Project="..\Server\packages\openssl.vcpkg.3.5.2\build\native\openssl.vcpkg.targets" Condition="Exists('..\Server\packages\openssl.vcpkg.3.5.2\build\native\openssl.vcpkg.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>Данный проект ссылается на пакеты NuGet, отсутствующие на этом компьютере. Используйте восстановление пакетов NuGet, чтобы скачать их.  Дополнительную информацию см. по адресу: http://go.microsoft.com/fwlink/?LinkID=322105. Отсутствует следующий файл: {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\Server\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Server\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets'))" />
+    <Error Condition="!Exists('..\Server\packages\openssl-vc141-static-x86_64.1.1.0\build\native\openssl-vc141-static-x86_64.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Server\packages\openssl-vc141-static-x86_64.1.1.0\build\native\openssl-vc141-static-x86_64.targets'))" />
+    <Error Condition="!Exists('..\Server\packages\PicoJSON.1.3.0\build\native\picojson.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Server\packages\PicoJSON.1.3.0\build\native\picojson.targets'))" />
+    <Error Condition="!Exists('..\Server\packages\jwt-cpp.0.7.0\build\native\jwt-cpp.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Server\packages\jwt-cpp.0.7.0\build\native\jwt-cpp.targets'))" />
+    <Error Condition="!Exists('..\Server\packages\openssl.vcpkg.3.5.2\build\native\openssl.vcpkg.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Server\packages\openssl.vcpkg.3.5.2\build\native\openssl.vcpkg.targets'))" />
   </Target>
 </Project>

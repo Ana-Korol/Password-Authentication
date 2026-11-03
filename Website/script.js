@@ -129,8 +129,7 @@
     }
 
     // ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА НА СЕРВЕР
-    // Принимает endpoint и объект data (например, { login, hash, salt })
-            function sendRequest(endpoint, data) {
+    function sendRequest(endpoint, data) {
         data.timestamp = Date.now();
         console.log('Отправка на сервер:', endpoint, data);
 
@@ -139,6 +138,7 @@
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', 
             body: JSON.stringify(data)
         })
         .then(response => {
@@ -164,20 +164,18 @@
         .then(result => {
             if (result === null) return null;
 
-            if (result.includes('|')) {
-                const parts = result.split('|');
-                const message = parts[0];
-                const sessionId = parts[1];
+            alert('Ответ сервера: ' + result);
 
-                localStorage.setItem('session_id', sessionId);
-                localStorage.setItem('session_login', data.login);
-                console.log('[session] Сохранён session_id:', sessionId);
-
-                alert('Ответ сервера: ' + message);
-                return { success: true, message: message };
-            } else {
-                alert('Ответ сервера: ' + result);
-                return { success: false, message: result };
+            // Показываем кнопку "Выйти"
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) logoutBtn.style.display = 'block';
+            
+            // === ОЧИЩАЕМ ФОРМУ ПОСЛЕ ВХОДА ===
+            // Проверяем, что это был запрос на вход (а не регистрация) и он успешен
+            if (endpoint === '/login' && result.includes('успешный')) {
+                nameInput.value = '';
+                passInput.value = '';
+                console.log('[login] Форма очищена');
             }
         })
         .catch(error => {
@@ -189,18 +187,10 @@
 
     // === ЗАПРОС ПРОФИЛЯ (требует сессию) ===
     async function fetchProfile() {
-        const sessionId = localStorage.getItem('session_id');
-        if (!sessionId) {
-            alert('Вы не авторизованы. Войдите.');
-            return null;
-        }
-
         try {
             const response = await fetch('http://localhost:8080/profile', {
                 method: 'GET',
-                headers: {
-                    'Authorization': 'Bearer ' + sessionId
-                }
+                credentials: 'include'
             });
 
             // Обработка 401
@@ -215,7 +205,8 @@
             const result = await response.text();
             console.log('[profile] Ответ:', result);
             return result;
-        } catch (error) {
+        } 
+        catch (error) {
             console.error('[profile] Ошибка:', error);
             alert('Ошибка соединения с сервером.');
             return null;
@@ -306,5 +297,26 @@
             alert('Ошибка при хешировании пароля. Попробуйте ещё раз.');
         }
     });
+
+
+        // === ОБРАБОТЧИК КНОПКИ "ВЫЙТИ" ===
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async function() {
+            try {
+                const response = await fetch('http://localhost:8080/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                const result = await response.text();
+                alert(result);
+                logoutBtn.style.display = 'none'; // Скрываем кнопку после выхода
+                nameInput.value = '';
+                passInput.value = '';
+            } catch (error) {
+                console.error('Ошибка выхода:', error);
+            }
+        });
+    }
 
 })();

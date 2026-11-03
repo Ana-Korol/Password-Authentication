@@ -1,5 +1,7 @@
 #include "functions.h"
+#include <jwt-cpp/jwt.h>
 #include <iostream>
+#include <functional>
 
 // === RATE LIMITING ===
 
@@ -171,4 +173,52 @@ std::string fakeSalt(const std::string& login) {
     while (result.length() < 32) result += "0";
 
     return result;
+}
+
+// === JWT ===
+
+// Генерирует JWT токен (HS256, срок жизни 15 минут)
+std::string generateJWT(const std::string& login, const std::string& secret) {
+    auto token = jwt::create()
+        .set_issuer("auth_server")
+        .set_type("JWT")
+        .set_issued_at(std::chrono::system_clock::now())
+        .set_expires_at(std::chrono::system_clock::now() + std::chrono::minutes(15))
+        .set_payload_claim("sub", jwt::claim(login))
+        .sign(jwt::algorithm::hs256{ secret });
+
+    return token;
+}
+
+// Проверяет JWT токен (подпись и срок действия)
+bool validateJWT(const std::string& token, const std::string& secret, std::string& outLogin) {
+    try {
+        auto decoded = jwt::decode(token);
+
+        auto verifier = jwt::verify()
+            .allow_algorithm(jwt::algorithm::hs256{ secret })
+            .with_issuer("auth_server");
+
+        verifier.verify(decoded);
+
+        // Если проверка прошла — достаём логин
+        outLogin = decoded.get_payload_claim("sub").as_string();
+        return true;
+    }
+    catch (const std::exception& e) {
+        // Токен подделан, протух или неверный формат
+        return false;
+    }
+}
+
+// Хеширует токен через SHA-256 (для хранения в Blacklist)
+// Используем встроенный в jwt-cpp хеш (picoSHA2)
+std::string hashToken(const std::string& token) {
+    // Простой детерминированный хеш для лабораторной
+    std::hash<std::string> hasher;
+    size_t h = hasher(token + "salt_for_blacklist");
+
+    std::stringstream ss;
+    ss << std::hex << std::setw(16) << std::setfill('0') << h;
+    return ss.str();
 }

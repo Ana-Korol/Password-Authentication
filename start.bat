@@ -21,7 +21,7 @@ start "Auth Server" cmd /k server.exe
 timeout /t 2 /nobreak >nul
 
 echo [2/2] Открытие сайта в браузере...
-start "" "Website\index.html"
+start "" "http://localhost:8080/index.html"
 
 echo.
 echo ========================================

@@ -7,6 +7,7 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include <jwt-cpp/jwt.h>
 
 // === RATE LIMITING ===
 struct LoginAttempt {
@@ -46,9 +47,16 @@ std::string parseJSONNumber(const std::string& json, const std::string& key);
 bool isTimestampValid(const std::string& timestampStr, long long maxAgeMs);
 
 // === ФИКТИВНАЯ СОЛЬ ===
-// Генерирует детерминированную "соль" для несуществующего пользователя.
-// Нужна, чтобы злоумышленник не мог отличить существующего пользователя
-// от несуществующего по формату ответа /salt.
 std::string fakeSalt(const std::string& login);
+
+// === JWT ===
+// Генерирует JWT токен для пользователя (срок жизни 15 минут)
+std::string generateJWT(const std::string& login, const std::string& secret);
+
+// Проверяет JWT токен. Если валиден — записывает логин в outLogin и возвращает true.
+bool validateJWT(const std::string& token, const std::string& secret, std::string& outLogin);
+
+// Возвращает SHA-256 хеш от токена (hex-строка). Нужен для Blacklist.
+std::string hashToken(const std::string& token);
 
 #endif // FUNCTIONS_H
