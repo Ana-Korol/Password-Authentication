@@ -2,6 +2,7 @@
 #include <jwt-cpp/jwt.h>
 #include <iostream>
 #include <functional>
+#include <openssl/sha.h>
 
 // === RATE LIMITING ===
 
@@ -211,14 +212,32 @@ bool validateJWT(const std::string& token, const std::string& secret, std::strin
     }
 }
 
-// Хеширует токен через SHA-256 (для хранения в Blacklist)
-// Используем встроенный в jwt-cpp хеш (picoSHA2)
 std::string hashToken(const std::string& token) {
-    // Простой детерминированный хеш для лабораторной
-    std::hash<std::string> hasher;
-    size_t h = hasher(token + "salt_for_blacklist");
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+
+    // Вычисляем SHA-256 от строки токена
+    SHA256(reinterpret_cast<const unsigned char*>(token.c_str()), token.length(), hash);
+
+    // Переводим байты в hex-строку (64 символа)
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        ss << std::setw(2) << static_cast<int>(hash[i]);
+    }
+
+    return ss.str();
+}
+
+// === REFRESH TOKEN ===
+std::string generateRefreshToken() {
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dis;
 
     std::stringstream ss;
-    ss << std::hex << std::setw(16) << std::setfill('0') << h;
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < 4; i++) {
+        ss << std::setw(16) << dis(gen);
+    }
     return ss.str();
 }

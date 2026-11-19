@@ -9,7 +9,29 @@
 #include <map>
 #include <chrono>
 #include <random>
+#include <fstream>
 
+
+// === ЧТЕНИЕ ПЕРЕМЕННОЙ ИЗ .ENV ===
+std::string getEnvValue(const std::string& key, const std::string& defaultValue) {
+    std::ifstream file(".env");
+    if (!file.is_open()) {
+        std::cerr << "[WARN] Файл .env не найден, используем значение по умолчанию" << std::endl;
+        return defaultValue;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        size_t pos = line.find('=');
+        if (pos != std::string::npos) {
+            std::string k = line.substr(0, pos);
+            std::string v = line.substr(pos + 1);
+            if (k == key) return v;
+        }
+    }
+    return defaultValue;
+}
 
 // === ФУНКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ SQL ЗАПРОСОВ ===
 bool executeSQL(sqlite3* db, const std::string& sql) {
@@ -30,7 +52,7 @@ int main() {
     setlocale(LC_ALL, "Russian");
 
     // === СЕКРЕТНЫЙ КЛЮЧ ДЛЯ JWT ===
-    const std::string JWT_SECRET = "super_secret_key_2026_password_auth_server";
+    const std::string JWT_SECRET = getEnvValue("JWT_SECRET", "default_fallback_key_if_env_missing");
 
     std::cout << "========================================" << std::endl;
     std::cout << "Запуск сервера аутентификации..." << std::endl;
@@ -72,6 +94,20 @@ int main() {
 
     if (!executeSQL(db, createBlacklistSQL)) {
         std::cerr << "Ошибка: Не удалось создать таблицу token_blacklist" << std::endl;
+        sqlite3_close(db);
+        return 1;
+    }
+
+    // === СОЗДАНИЕ ТАБЛИЦЫ REFRESH TOKENS ===
+    std::string createRefreshSQL =
+        "CREATE TABLE IF NOT EXISTS refresh_tokens ("
+        "token_hash TEXT PRIMARY KEY,"
+        "user_login TEXT NOT NULL,"
+        "expires_at INTEGER NOT NULL"
+        ");";
+
+    if (!executeSQL(db, createRefreshSQL)) {
+        std::cerr << "Ошибка: Не удалось создать таблицу refresh_tokens" << std::endl;
         sqlite3_close(db);
         return 1;
     }
@@ -320,40 +356,261 @@ int main() {
             resetFails(login, loginAttempts);
             resetFails(clientIp, ipAttempts);
 
-            // === ГЕНЕРИРУЕМ JWT И ОТПРАВЛЯЕМ В COOKIE ===
-            std::string jwtToken = generateJWT(login, JWT_SECRET);
+            // 1. Генерируем Access Token (JWT на 15 минут)
+            std::string accessToken = generateJWT(login, JWT_SECRET);
 
-            // Формируем заголовок Set-Cookie
-            std::string cookie = "jwt_token=" + jwtToken + "; HttpOnly; Path=/";
+            // 2. Генерируем Refresh Token (случайная строка на 7 дней)
+            std::string refreshToken = generateRefreshToken();
+            long long refreshExpiresAt = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count() + 7 * 24 * 3600; // +7 дней
 
-            res.set_header("Set-Cookie", cookie);
+            // 3. Сохраняем хеш Refresh Token в БД
+            std::string refreshHash = hashToken(refreshToken);
+            std::string insertRefreshSQL = "INSERT OR REPLACE INTO refresh_tokens (token_hash, user_login, expires_at) VALUES ('" + refreshHash + "', '" + login + "', " + std::to_string(refreshExpiresAt) + ");";
+            executeSQL(db, insertRefreshSQL);
+
+            // 4. Отправляем оба токена в куках (в виде отдельных заголовков)
+            std::string accessCookie = "access_token=" + accessToken + "; HttpOnly; Path=/; Max-Age=900";
+            std::string refreshCookie = "refresh_token=" + refreshToken + "; HttpOnly; Path=/; Max-Age=604800";
+
+            // Добавляем в список заголовков (не перезаписываем)
+            res.headers.emplace("Set-Cookie", accessCookie);
+            res.headers.emplace("Set-Cookie", refreshCookie);
+
             res.set_content("OK: \xd0\x92\xd1\x85\xd0\xbe\xd0\xb4 \xd1\x83\xd1\x81\xd0\xbf\xd0\xb5\xd1\x88\xd0\xbd\xd1\x8b\xd0\xb9", "text/plain; charset=utf-8");
         }
     });
+
+    // === ЭНДПОИНТ /refresh ===
+// Обновляет Access Token с помощью Refresh Token
+
+    // === ЭНДПОИНТ /refresh С РОТАЦИЕЙ ТОКЕНОВ ===
+    svr.Post("/refresh", [&db, JWT_SECRET](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Content-Type", "text/plain; charset=utf-8");
+
+        // 1. Извлекаем Refresh Token из Cookie
+        std::string refreshToken;
+
+        if (req.has_header("Cookie")) {
+            std::string cookies = req.get_header_value("Cookie");
+            size_t pos = cookies.find("refresh_token=");
+
+            if (pos != std::string::npos) {
+                pos += std::string("refresh_token=").length();
+
+                size_t end = cookies.find(";", pos);
+                if (end == std::string::npos) {
+                    end = cookies.length();
+                }
+
+                refreshToken = cookies.substr(pos, end - pos);
+            }
+        }
+
+        if (refreshToken.empty()) {
+            res.status = 401;
+            res.set_content("ERROR: Refresh Token отсутствует", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // 2. Хешируем полученный токен
+        std::string oldHash = hashToken(refreshToken);
+
+        // 3. Начинаем транзакцию SQLite
+        if (!executeSQL(db, "BEGIN IMMEDIATE;")) {
+            res.status = 500;
+            res.set_content("ERROR: Ошибка базы данных", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // 4. Ищем Refresh Token в базе
+        sqlite3_stmt* stmt = nullptr;
+
+        const char* selectSQL =
+            "SELECT user_login, expires_at FROM refresh_tokens WHERE token_hash = ?;";
+
+        int rc = sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nullptr);
+
+        if (rc != SQLITE_OK) {
+            executeSQL(db, "ROLLBACK;");
+            res.status = 500;
+            res.set_content("ERROR: Ошибка SQL", "text/plain; charset=utf-8");
+            return;
+        }
+
+        sqlite3_bind_text(stmt, 1, oldHash.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(stmt);
+
+        if (rc != SQLITE_ROW) {
+            sqlite3_finalize(stmt);
+            executeSQL(db, "ROLLBACK;");
+
+            res.status = 401;
+            res.set_content("ERROR: Refresh Token недействителен", "text/plain; charset=utf-8");
+            return;
+        }
+
+        std::string login =
+            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+
+        long long expiresAt = sqlite3_column_int64(stmt, 1);
+
+        sqlite3_finalize(stmt);
+
+        // 5. Проверяем срок действия Refresh Token
+        long long now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+        ).count();
+
+        if (now >= expiresAt) {
+            // Удаляем просроченный токен
+            sqlite3_stmt* deleteStmt = nullptr;
+
+            sqlite3_prepare_v2(
+                db,
+                "DELETE FROM refresh_tokens WHERE token_hash = ?;",
+                -1,
+                &deleteStmt,
+                nullptr
+            );
+
+            sqlite3_bind_text(deleteStmt, 1, oldHash.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(deleteStmt);
+            sqlite3_finalize(deleteStmt);
+
+            executeSQL(db, "COMMIT;");
+
+            res.status = 401;
+            res.set_content("ERROR: Refresh Token истёк", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // 6. Генерируем НОВЫЕ токены
+        std::string newAccessToken = generateJWT(login, JWT_SECRET);
+        std::string newRefreshToken = generateRefreshToken();
+
+        // 7. Вычисляем хеш нового Refresh Token
+        std::string newHash = hashToken(newRefreshToken);
+
+        long long newExpiresAt = now + 7 * 24 * 3600;
+
+        // 8. Удаляем старый Refresh Token из БД
+        sqlite3_stmt* deleteStmt = nullptr;
+
+        rc = sqlite3_prepare_v2(
+            db,
+            "DELETE FROM refresh_tokens WHERE token_hash = ?;",
+            -1,
+            &deleteStmt,
+            nullptr
+        );
+
+        if (rc != SQLITE_OK) {
+            executeSQL(db, "ROLLBACK;");
+            res.status = 500;
+            res.set_content("ERROR: Не удалось удалить старый токен", "text/plain; charset=utf-8");
+            return;
+        }
+
+        sqlite3_bind_text(deleteStmt, 1, oldHash.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(deleteStmt);
+        sqlite3_finalize(deleteStmt);
+
+        if (rc != SQLITE_DONE) {
+            executeSQL(db, "ROLLBACK;");
+            res.status = 500;
+            res.set_content("ERROR: Ошибка удаления токена", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // 9. Сохраняем новый Refresh Token в БД
+        sqlite3_stmt* insertStmt = nullptr;
+
+        rc = sqlite3_prepare_v2(
+            db,
+            "INSERT INTO refresh_tokens (token_hash, user_login, expires_at) VALUES (?, ?, ?);",
+            -1,
+            &insertStmt,
+            nullptr
+        );
+
+        if (rc != SQLITE_OK) {
+            executeSQL(db, "ROLLBACK;");
+            res.status = 500;
+            res.set_content("ERROR: Не удалось сохранить новый токен", "text/plain; charset=utf-8");
+            return;
+        }
+
+        sqlite3_bind_text(insertStmt, 1, newHash.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt, 2, login.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(insertStmt, 3, newExpiresAt);
+
+        rc = sqlite3_step(insertStmt);
+        sqlite3_finalize(insertStmt);
+
+        if (rc != SQLITE_DONE) {
+            executeSQL(db, "ROLLBACK;");
+            res.status = 500;
+            res.set_content("ERROR: Ошибка сохранения нового токена", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // 10. Подтверждаем транзакцию
+        if (!executeSQL(db, "COMMIT;")) {
+            executeSQL(db, "ROLLBACK;");
+            res.status = 500;
+            res.set_content("ERROR: Не удалось завершить транзакцию", "text/plain; charset=utf-8");
+            return;
+        }
+
+        // 11. Устанавливаем обе новые Cookie
+        std::string accessCookie =
+            "access_token=" + newAccessToken +
+            "; HttpOnly; Path=/; Max-Age=900";
+
+        std::string refreshCookie =
+            "refresh_token=" + newRefreshToken +
+            "; HttpOnly; Path=/; Max-Age=604800";
+
+        res.headers.emplace("Set-Cookie", accessCookie);
+        res.headers.emplace("Set-Cookie", refreshCookie);
+
+        res.set_content(
+            "OK: Access Token и Refresh Token updated",
+            "text/plain; charset=utf-8"
+        );
+        });
+
 
     // === ЗАЩИЩЁННЫЙ ЭНДПОИНТ /profile ===
     // Проверяет JWT из Cookie
     svr.Get("/profile", [&db, JWT_SECRET](const httplib::Request& req, httplib::Response& res) {
         res.set_header("Content-Type", "text/plain; charset=utf-8");
 
+
         // 1. Извлекаем JWT из Cookie
         std::string token = "";
+
         if (req.has_header("Cookie")) {
             std::string cookies = req.get_header_value("Cookie");
-            size_t pos = cookies.find("jwt_token=");
+            size_t pos = cookies.find("access_token=");
+
             if (pos != std::string::npos) {
-                pos += 10; // длина "jwt_token="
+                pos += std::string("access_token=").length();
+
                 size_t end = cookies.find(";", pos);
-                if (end == std::string::npos) end = cookies.length();
+
+                if (end == std::string::npos) {
+                    end = cookies.length();
+                }
+
                 token = cookies.substr(pos, end - pos);
             }
         }
 
-        if (token.empty()) {
-            res.status = 401;
-            res.set_content("OK: \xd0\xa2\xd1\x80\xd0\xb5\xd0\xb1\xd1\x83\xd0\xb5\xd1\x82\xd1\x81\xd1\x8f \xd0\xb0\xd0\xb2\xd1\x82\xd0\xbe\xd1\x80\xd0\xb8\xd0\xb7\xd0\xb0\xd1\x86\xd0\xb8\xd1\x8f", "text/plain; charset=utf-8");
-            return;
-        }
 
         // 2. Проверяем JWT (подпись и срок действия)
         std::string login;
@@ -393,9 +650,9 @@ int main() {
         std::string token = "";
         if (req.has_header("Cookie")) {
             std::string cookies = req.get_header_value("Cookie");
-            size_t pos = cookies.find("jwt_token=");
+            size_t pos = cookies.find("access_token=");
             if (pos != std::string::npos) {
-                pos += 10;
+                pos += std::string("access_token=").length();
                 size_t end = cookies.find(";", pos);
                 if (end == std::string::npos) end = cookies.length();
                 token = cookies.substr(pos, end - pos);
@@ -423,8 +680,11 @@ int main() {
         }
 
         // 3. Очищаем Cookie у клиента
-        res.set_header("Set-Cookie", "jwt_token=; HttpOnly; SameSite=Strict; Max-Age=0; Path=/");
-        res.set_content("OK: \xd0\x92\xd1\x8b \xd0\xb2\xd1\x8b\xd1\x88\xd0\xbb\xd0\xb8 \xd0\xb8\xd0\xb7 \xd1\x81\xd0\xb8\xd1\x81\xd1\x82\xd0\xb5\xd0\xbc\xd1\x8b", "text/plain; charset=utf-8");
+        res.headers.emplace("Set-Cookie",
+            "access_token=; HttpOnly; Path=/; Max-Age=0");
+
+        res.headers.emplace("Set-Cookie",
+            "refresh_token=; HttpOnly; Path=/; Max-Age=0");
         });
 
     std::cout << "Сервер запущен на http://localhost:8080" << std::endl;
@@ -436,7 +696,7 @@ int main() {
     // Раздаём файлы сайта по HTTP (чтобы работали Cookie)
     svr.set_mount_point("/", "./Website");
 
-    if (!svr.listen("localhost", 8080)) {
+    if (!svr.listen("0.0.0.0", 8080)) {
         std::cerr << "Ошибка: не удалось запустить сервер на порту 8080" << std::endl;
         std::cin.get();
         sqlite3_close(db);

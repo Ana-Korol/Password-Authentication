@@ -11,6 +11,8 @@ Release/
 *.ilk
 *.user
 *.suo
+*.dll
+.env
 
 # NuGet packages
 packages/

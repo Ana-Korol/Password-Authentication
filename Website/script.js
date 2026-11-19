@@ -185,28 +185,40 @@
         });
     }
 
-    // === ЗАПРОС ПРОФИЛЯ (требует сессию) ===
+        // === ЗАПРОС ПРОФИЛЯ (с авто-обновлением токена) ===
     async function fetchProfile() {
         try {
-            const response = await fetch('http://localhost:8080/profile', {
+            let response = await fetch('http://localhost:8080/profile', {
                 method: 'GET',
                 credentials: 'include'
             });
 
-            // Обработка 401
+            // Если Access Token истек (401), пробуем обновить
             if (response.status === 401) {
-                console.warn('[profile] Сессия истекла (401)');
-                localStorage.removeItem('session_id');
-                localStorage.removeItem('session_login');
-                alert('Сессия истекла. Войдите заново.');
-                return null;
+                console.warn('[profile] Access Token истек, пробуем /refresh...');
+                
+                const refreshResponse = await fetch('http://localhost:8080/refresh', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                if (refreshResponse.ok) {
+                    console.log('[profile] Токен обновлен, повторяем запрос...');
+                    // Повторяем исходный запрос к /profile
+                    response = await fetch('http://localhost:8080/profile', {
+                        method: 'GET',
+                        credentials: 'include'
+                    });
+                } else {
+                    alert('Сессия истекла. Войдите заново.');
+                    return null;
+                }
             }
 
             const result = await response.text();
             console.log('[profile] Ответ:', result);
             return result;
-        } 
-        catch (error) {
+        } catch (error) {
             console.error('[profile] Ошибка:', error);
             alert('Ошибка соединения с сервером.');
             return null;

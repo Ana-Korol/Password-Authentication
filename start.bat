@@ -1,3 +1,4 @@
+
 @echo off
 chcp 65001 >nul
 title Password Authentication - Launcher

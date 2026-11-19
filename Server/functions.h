@@ -59,4 +59,8 @@ bool validateJWT(const std::string& token, const std::string& secret, std::strin
 // Возвращает SHA-256 хеш от токена (hex-строка). Нужен для Blacklist.
 std::string hashToken(const std::string& token);
 
+// === REFRESH TOKEN ===
+// Генерирует случайную строку (64 hex-символа) для Refresh Token
+std::string generateRefreshToken();
+
 #endif // FUNCTIONS_H
