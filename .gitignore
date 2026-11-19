@@ -30,3 +30,17 @@ packages/
 
 # VS Code
 .vscode/
+
+# Visual Studio build files
+.vs/
+Server/.vs/
+Server/x64/
+Server/Debug/
+Server/Release/
+
+# Generated binaries
+/server.exe
+/libcrypto-3-x64.dll
+/libssl-3-x64.dll
+/legacy.dll
+
