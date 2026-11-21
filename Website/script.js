@@ -133,7 +133,7 @@
         data.timestamp = Date.now();
         console.log('Отправка на сервер:', endpoint, data);
 
-        return fetch(`http://localhost:8080${endpoint}`, {
+        return fetch(`https://localhost:8080${endpoint}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -188,7 +188,7 @@
         // === ЗАПРОС ПРОФИЛЯ (с авто-обновлением токена) ===
     async function fetchProfile() {
         try {
-            let response = await fetch('http://localhost:8080/profile', {
+            let response = await fetch('https://localhost:8080/profile', {
                 method: 'GET',
                 credentials: 'include'
             });
@@ -197,7 +197,7 @@
             if (response.status === 401) {
                 console.warn('[profile] Access Token истек, пробуем /refresh...');
                 
-                const refreshResponse = await fetch('http://localhost:8080/refresh', {
+                const refreshResponse = await fetch('https://localhost:8080/refresh', {
                     method: 'POST',
                     credentials: 'include'
                 });
@@ -205,7 +205,7 @@
                 if (refreshResponse.ok) {
                     console.log('[profile] Токен обновлен, повторяем запрос...');
                     // Повторяем исходный запрос к /profile
-                    response = await fetch('http://localhost:8080/profile', {
+                    response = await fetch('https://localhost:8080/profile', {
                         method: 'GET',
                         credentials: 'include'
                     });
@@ -229,7 +229,7 @@
     // Возвращает соль пользователя или null, если пользователь не найден
     async function fetchSalt(login) {
         try {
-            const response = await fetch(`http://localhost:8080/salt?login=${encodeURIComponent(login)}`);
+            const response = await fetch(`https://localhost:8080/salt?login=${encodeURIComponent(login)}`);
             if (!response.ok) {
                 console.error('[fetchSalt] Сервер вернул ошибку:', response.status);
                 return null;
@@ -316,7 +316,7 @@
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async function() {
             try {
-                const response = await fetch('http://localhost:8080/logout', {
+                const response = await fetch('https://localhost:8080/logout', {
                     method: 'POST',
                     credentials: 'include'
                 });

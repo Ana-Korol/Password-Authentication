@@ -1,4 +1,5 @@
-﻿#include "httplib.h"
+﻿#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include "httplib.h"
 #include "sqlite3.h"
 #include "functions.h"
 #include <iostream>
@@ -135,7 +136,7 @@ int main() {
 
    
 
-    httplib::Server svr;
+    httplib::SSLServer svr("certs/server.crt", "certs/server.key");
 
     // === CORS ДЛЯ ВСЕХ ЗАПРОСОВ (включая 404) ===
     svr.set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
@@ -371,8 +372,8 @@ int main() {
             executeSQL(db, insertRefreshSQL);
 
             // 4. Отправляем оба токена в куках (в виде отдельных заголовков)
-            std::string accessCookie = "access_token=" + accessToken + "; HttpOnly; Path=/; Max-Age=900";
-            std::string refreshCookie = "refresh_token=" + refreshToken + "; HttpOnly; Path=/; Max-Age=604800";
+            std::string accessCookie = "access_token=" + accessToken + "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=900";
+            std::string refreshCookie = "refresh_token=" + refreshToken + "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=604800";
 
             // Добавляем в список заголовков (не перезаписываем)
             res.headers.emplace("Set-Cookie", accessCookie);
@@ -382,8 +383,6 @@ int main() {
         }
     });
 
-    // === ЭНДПОИНТ /refresh ===
-// Обновляет Access Token с помощью Refresh Token
 
     // === ЭНДПОИНТ /refresh С РОТАЦИЕЙ ТОКЕНОВ ===
     svr.Post("/refresh", [&db, JWT_SECRET](const httplib::Request& req, httplib::Response& res) {
@@ -569,11 +568,11 @@ int main() {
         // 11. Устанавливаем обе новые Cookie
         std::string accessCookie =
             "access_token=" + newAccessToken +
-            "; HttpOnly; Path=/; Max-Age=900";
+            "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=900";
 
         std::string refreshCookie =
             "refresh_token=" + newRefreshToken +
-            "; HttpOnly; Path=/; Max-Age=604800";
+            "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=604800";
 
         res.headers.emplace("Set-Cookie", accessCookie);
         res.headers.emplace("Set-Cookie", refreshCookie);
@@ -681,13 +680,13 @@ int main() {
 
         // 3. Очищаем Cookie у клиента
         res.headers.emplace("Set-Cookie",
-            "access_token=; HttpOnly; Path=/; Max-Age=0");
+            "access_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0");
 
         res.headers.emplace("Set-Cookie",
-            "refresh_token=; HttpOnly; Path=/; Max-Age=0");
+            "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0");
         });
 
-    std::cout << "Сервер запущен на http://localhost:8080" << std::endl;
+    std::cout << "Сервер запущен на https://localhost:8080" << std::endl;
     std::cout << "Для регистрации: POST /register" << std::endl;
     std::cout << "Для входа: POST /login" << std::endl;
     std::cout << "========================================" << std::endl;
