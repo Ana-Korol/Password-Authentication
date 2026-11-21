@@ -13,6 +13,7 @@ Release/
 *.suo
 *.dll
 .env
+certs/server.key
 
 # NuGet packages
 packages/

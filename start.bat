@@ -100,7 +100,7 @@ timeout /t 2 /nobreak >nul
 :: Открытие сайта
 echo [4/4] Открытие сайта в браузере...
 
-start "" "http://localhost:8080/index.html"
+start "" "https://localhost:8080/index.html"
 
 echo.
 echo ========================================
