@@ -1,29 +1,48 @@
+
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Формочка 1</title>
+    <title>Парольная аутентификация</title>
     <link rel="stylesheet" type="text/css" href="style.css">
 </head>
 <body>
     <form id="myForm">
         <fieldset>
-            <div class="row">
-                <div class="col labels">
-                    <label for="Name" class="required">Name</label>
-                    <label for="Password" class="required">Password</label>
+
+            <!-- Экран входа и регистрации -->
+            <div id="loginView">
+                <div class="row">
+                    <div class="col labels">
+                        <label for="Name" class="required">Name</label>
+                        <label for="Password" class="required">Password</label>
+                    </div>
+                    <div class="col inputs">
+                        <input name="Name" id="Name" placeholder="Введите своё имя" required>
+                        <input name="Password" id="Password" type="password" placeholder="Введите свой пароль" required>
+                    </div>
                 </div>
-                <div class="col inputs">
-                    <input name="Name" id="Name" placeholder="Введите своё имя" required>
-                    <input name="Password" id="Password" type="password" placeholder="Введите свой пароль" required>
+
+                <div class="btn-group">
+                    <input type="submit" value="Войти">
+                    <button type="button" class="register-btn" id="registerBtn">Зарегистрироваться</button>
                 </div>
             </div>
 
-            <div class="btn-group">
-                <input type="submit" value="Войти">
-                <button type="button" class="register-btn" id="registerBtn">Зарегистрироваться</button>
-                <button type="button" id="logoutBtn" class="register-btn" style="display: none;">Выйти</button>
+            <!-- Экран авторизованного пользователя -->
+            <div id="profileView" hidden>
+                <h2>Вы вошли в систему</h2>
+
+                <p>
+                    Вы вошли как:
+                    <strong id="profileName"></strong>
+                </p>
+
+                <div class="btn-group">
+                    <button type="button" id="logoutBtn" class="register-btn">Выйти</button>
+                </div>
             </div>
+
         </fieldset>
     </form>
 

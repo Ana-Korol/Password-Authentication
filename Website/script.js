@@ -129,54 +129,90 @@
     }
 
     // ФУНКЦИЯ ОТПРАВКИ ЗАПРОСА НА СЕРВЕР
+        
     function sendRequest(endpoint, data) {
         data.timestamp = Date.now();
-        console.log('Отправка на сервер:', endpoint, data);
+
+        console.log('Отправка запроса:', endpoint);
 
         return fetch(`https://localhost:8080${endpoint}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            credentials: 'include', 
+            credentials: 'include',
             body: JSON.stringify(data)
         })
-        .then(response => {
-            if (response.status === 401) {
+        .then(async response => {
+
+            if (response.status === 401 && endpoint !== '/login') {
                 console.warn('[session] Сессия истекла (401)');
                 localStorage.removeItem('session_id');
                 localStorage.removeItem('session_login');
                 alert('Сессия истекла. Пожалуйста, войдите заново.');
                 return null;
             }
+
             if (response.status === 403) {
-                console.warn('[session] Доступ запрещён (403)');
                 alert('Доступ запрещён.');
                 return null;
             }
+
+            if (response.status === 429) {
+                const result = await response.text();
+
+                console.log('[429] Ответ сервера:', result);
+
+                let message = 'Слишком много попыток. Попробуйте позже.';
+
+                try {
+                    const json = JSON.parse(result);
+                    message = json.message || message;
+                } catch (error) {
+                    message = result || message;
+                }
+
+                alert(message);
+                return null;
+            }
+
             if (response.status >= 500) {
                 console.error('[server] Ошибка сервера:', response.status);
                 alert('Ошибка на стороне сервера. Попробуйте позже.');
                 return null;
             }
-            return response.text();
-        })
-        .then(result => {
-            if (result === null) return null;
 
-            alert('Ответ сервера: ' + result);
+            // Определяем формат ответа сервера
+            const contentType = response.headers.get('content-type') || '';
+            const result = contentType.includes('application/json')
+                ? await response.json()
+                : await response.text();
 
-            // Показываем кнопку "Выйти"
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn) logoutBtn.style.display = 'block';
-            
-            // === ОЧИЩАЕМ ФОРМУ ПОСЛЕ ВХОДА ===
-            // Проверяем, что это был запрос на вход (а не регистрация) и он успешен
-            if (endpoint === '/login' && result.includes('успешный')) {
-                nameInput.value = '';
-                passInput.value = '';
-                console.log('[login] Форма очищена');
+            // Обработка входа
+            if (endpoint === '/login') {
+                if (result && result.success) {
+                    alert('Вход выполнен успешно!');
+
+                    nameInput.value = '';
+                    passInput.value = '';
+
+                    // Переключаем экран входа на профиль
+                    document.getElementById('loginView').style.display = 'none';
+                    document.getElementById('profileView').style.display = 'block';
+
+                    // Показываем логин пользователя
+                    document.getElementById('profileName').textContent = result.login;
+                } else {
+                    alert(result.message || 'Неверный логин или пароль');
+                }
+            } else {
+                alert('Ответ сервера: ' +
+                    (typeof result === 'string'
+                        ? result
+                        : JSON.stringify(result)));
             }
+
+            return result;
         })
         .catch(error => {
             alert('Ошибка соединения с сервером! Убедитесь, что сервер запущен на порту 8080.');
@@ -184,6 +220,7 @@
             return null;
         });
     }
+
 
         // === ЗАПРОС ПРОФИЛЯ (с авто-обновлением токена) ===
     async function fetchProfile() {
@@ -193,34 +230,46 @@
                 credentials: 'include'
             });
 
-            // Если Access Token истек (401), пробуем обновить
+            // Если Access Token истёк, пробуем обновить
             if (response.status === 401) {
-                console.warn('[profile] Access Token истек, пробуем /refresh...');
-                
+                console.warn('[profile] Access Token истёк, пробуем /refresh...');
+
                 const refreshResponse = await fetch('https://localhost:8080/refresh', {
                     method: 'POST',
                     credentials: 'include'
                 });
 
                 if (refreshResponse.ok) {
-                    console.log('[profile] Токен обновлен, повторяем запрос...');
-                    // Повторяем исходный запрос к /profile
+                    console.log('[profile] Токен обновлён, повторяем запрос...');
+
                     response = await fetch('https://localhost:8080/profile', {
                         method: 'GET',
                         credentials: 'include'
                     });
                 } else {
-                    alert('Сессия истекла. Войдите заново.');
+                    console.log('[profile] Сохранённая сессия недействительна.');
                     return null;
                 }
             }
 
-            const result = await response.text();
+            if (!response.ok) {
+                console.error('[profile] Ошибка сервера:', response.status);
+                return null;
+            }
+
+            const result = await response.json();
             console.log('[profile] Ответ:', result);
+
+            if (result.success) {
+                document.getElementById('loginView').style.display = 'none';
+                document.getElementById('profileView').style.display = 'block';
+                document.getElementById('profileName').textContent = result.login;
+            }
+
             return result;
+
         } catch (error) {
             console.error('[profile] Ошибка:', error);
-            alert('Ошибка соединения с сервером.');
             return null;
         }
     }
@@ -320,15 +369,30 @@
                     method: 'POST',
                     credentials: 'include'
                 });
-                const result = await response.text();
-                alert(result);
-                logoutBtn.style.display = 'none'; // Скрываем кнопку после выхода
+
+                if (!response.ok) {
+                    alert('Не удалось завершить сеанс.');
+                    return;
+                }
+
+                // Скрываем профиль и возвращаем форму входа
+                document.getElementById('profileView').style.display = 'none';
+                document.getElementById('loginView').style.display = 'block';
+
+                // Очищаем данные на странице
+                document.getElementById('profileName').textContent = '';
                 nameInput.value = '';
                 passInput.value = '';
+
+                alert('Вы вышли из системы.');
             } catch (error) {
                 console.error('Ошибка выхода:', error);
+                alert('Ошибка соединения при выходе.');
             }
         });
     }
+    
+    // === ПРОВЕРКА АВТОРИЗАЦИИ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ ===
+    fetchProfile();
 
 })();

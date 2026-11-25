@@ -235,13 +235,14 @@ int main() {
 
         // === ПРОВЕРКА TIMESTAMP ===
         if (!isTimestampValid(timestamp, 3000)) {
-            res.set_content("OK: \xd0\x97\xd0\xb0\xd0\xbf\xd1\x80\xd0\xbe\xd1\x81 \xd1\x83\xd1\x81\xd1\x82\xd0\xb0\xd1\x80\xd0\xb5\xd0\xbb. \xd0\x9e\xd0\xb1\xd0\xbd\xd0\xbe\xd0\xb2\xd0\xb8\xd1\x82\xd0\xb5 \xd1\x81\xd1\x82\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x86\xd1\x83", "text/plain; charset=utf-8");
+            res.status = 400;
+            res.set_content("ERROR: \xd0\x97\xd0\xb0\xd0\xbf\xd1\x80\xd0\xbe\xd1\x81 \xd1\x83\xd1\x81\xd1\x82\xd0\xb0\xd1\x80\xd0\xb5\xd0\xbb. \xd0\x9e\xd0\xb1\xd0\xbd\xd0\xbe\xd0\xb2\xd0\xb8\xd1\x82\xd0\xb5 \xd1\x81\xd1\x82\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x86\xd1\x83", "text/plain; charset=utf-8");
             return;
         }
 
-        // Проверка на пустые поля
         if (login.empty() || hash.empty() || salt.empty()) {
-            res.set_content("OK: \xd0\x9d\xd0\xb5\xd0\xb2\xd0\xb5\xd1\x80\xd0\xbd\xd1\x8b\xd0\xb5 \xd0\xb4\xd0\xb0\xd0\xbd\xd0\xbd\xd1\x8b\xd0\xb5", "text/plain; charset=utf-8");
+            res.status = 400;
+            res.set_content("ERROR: \xd0\x9d\xd0\xb5\xd0\xb2\xd0\xb5\xd1\x80\xd0\xbd\xd1\x8b\xd0\xb5 \xd0\xb4\xd0\xb0\xd0\xbd\xd0\xbd\xd1\x8b\xd0\xb5", "text/plain; charset=utf-8");
             return;
         }
 
@@ -301,7 +302,7 @@ int main() {
 
     // === ОБРАБОТЧИК /login ===
     svr.Post("/login", [&db, &loginAttempts, &ipAttempts, &usedNonces, MAX_FAILS, LOCK_DURATION_SEC, MAX_IP_FAILS, IP_LOCK_DURATION_SEC, NONCE_TTL_SEC, JWT_SECRET](const httplib::Request& req, httplib::Response& res) {
-        res.set_header("Content-Type", "text/plain; charset=utf-8");
+        res.set_header("Content-Type", "application/json; charset=utf-8");
 
         // Парсим JSON
         std::string login = parseJSON(req.body, "login");
@@ -312,25 +313,27 @@ int main() {
         std::string clientIp = req.remote_addr;
         if (isLocked(clientIp, ipAttempts)) {
             res.status = 429;
-            res.set_content("OK: \xd0\xa1\xd0\xbb\xd0\xb8\xd1\x88\xd0\xba\xd0\xbe\xd0\xbc \xd0\xbc\xd0\xbd\xd0\xbe\xd0\xb3\xd0\xbe \xd0\xbf\xd0\xbe\xd0\xbf\xd1\x8b\xd1\x82\xd0\xbe\xd0\xba \xd1\x81 \xd0\xb2\xd0\xb0\xd1\x88\xd0\xb5\xd0\xb3\xd0\xbe IP", "text/plain; charset=utf-8");
+            res.set_content(R"({"success":false,"message":"\u0421\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u043f\u043e\u043f\u044b\u0442\u043e\u043a \u0441 \u044d\u0442\u043e\u0433\u043e IP. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u043f\u043e\u0437\u0436\u0435."})", "application/json; charset=utf-8"); 
             return;
         }
 
         // === ПРОВЕРКА TIMESTAMP ===
         if (!isTimestampValid(timestamp, 3000)) {
-            res.set_content("OK: \xd0\x97\xd0\xb0\xd0\xbf\xd1\x80\xd0\xbe\xd1\x81 \xd1\x83\xd1\x81\xd1\x82\xd0\xb0\xd1\x80\xd0\xb5\xd0\xbb. \xd0\x9e\xd0\xb1\xd0\xbd\xd0\xbe\xd0\xb2\xd0\xb8\xd1\x82\xd0\xb5 \xd1\x81\xd1\x82\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x86\xd1\x83", "text/plain; charset=utf-8");
+            res.status = 400;
+            res.set_content(R"({"success":false,"message":"\u0417\u0430\u043f\u0440\u043e\u0441 \u0443\u0441\u0442\u0430\u0440\u0435\u043b. \u041e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443"})", "application/json; charset=utf-8");
             return;
         }
 
         if (login.empty() || hash.empty()) {
-            res.set_content("OK: \xd0\x9d\xd0\xb5\xd0\xb2\xd0\xb5\xd1\x80\xd0\xbd\xd1\x8b\xd0\xb9 \xd0\xbb\xd0\xbe\xd0\xb3\xd0\xb8\xd0\xbd \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xbf\xd0\xb0\xd1\x80\xd0\xbe\xd0\xbb\xd1\x8c", "text/plain; charset=utf-8");
+            res.status = 400;
+            res.set_content(R"({"success":false,"message":"\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043b\u043e\u0433\u0438\u043d \u0438\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c"})", "application/json; charset=utf-8"); 
             return;
         }
 
         // === ПРОВЕРКА БЛОКИРОВКИ ===
         if (isLocked(login, loginAttempts)) {
-            
-            res.set_content("OK: \xd0\xa1\xd0\xbb\xd0\xb8\xd1\x88\xd0\xba\xd0\xbe\xd0\xbc \xd0\xbc\xd0\xbd\xd0\xbe\xd0\xb3\xd0\xbe \xd0\xbf\xd0\xbe\xd0\xbf\xd1\x8b\xd1\x82\xd0\xbe\xd0\xba. \xd0\x9f\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb1\xd1\x83\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xbe\xd0\xb7\xd0\xb6\xd0\xb5", "text/plain; charset=utf-8");
+            res.status = 429;
+            res.set_content(R"({"success":false,"message":"\u0421\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u043f\u043e\u043f\u044b\u0442\u043e\u043a. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u043f\u043e\u0437\u0436\u0435"})", "application/json; charset=utf-8");
             return;
         }
 
@@ -379,7 +382,14 @@ int main() {
             res.headers.emplace("Set-Cookie", accessCookie);
             res.headers.emplace("Set-Cookie", refreshCookie);
 
-            res.set_content("OK: \xd0\x92\xd1\x85\xd0\xbe\xd0\xb4 \xd1\x83\xd1\x81\xd0\xbf\xd0\xb5\xd1\x88\xd0\xbd\xd1\x8b\xd0\xb9", "text/plain; charset=utf-8");
+            res.set_content(R"({"success":true,"login":")" + login + R"("})", "application/json; charset=utf-8");
+        }
+        else {
+            // Учитываем неудачную попытку по логину и IP
+            recordFail(login, loginAttempts, MAX_FAILS, LOCK_DURATION_SEC);
+            recordFail(clientIp, ipAttempts, MAX_IP_FAILS, IP_LOCK_DURATION_SEC);
+            res.status = 401;
+            res.set_content(R"({"success":false,"message":"\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043b\u043e\u0433\u0438\u043d \u0438\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c"})", "application/json; charset=utf-8");
         }
     });
 
@@ -638,7 +648,7 @@ int main() {
         }
 
         // 4. Всё ок — отдаём профиль
-        res.set_content("OK: \xd0\x92\xd1\x8b \xd0\xb2\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8 \xd0\xba\xd0\xb0\xd0\xba " + login, "text/plain; charset=utf-8");
+        res.set_content(R"({"success":true,"login":")" + login + R"("})", "application/json; charset=utf-8");
     });
 
     // === ЭНДПОИНТ /logout ===
@@ -656,6 +666,27 @@ int main() {
                 if (end == std::string::npos) end = cookies.length();
                 token = cookies.substr(pos, end - pos);
             }
+        }
+
+        // Извлекаем Refresh Token из Cookie
+        std::string refreshToken = "";
+        if (req.has_header("Cookie")) {
+            std::string cookies = req.get_header_value("Cookie");
+            size_t pos = cookies.find("refresh_token=");
+            if (pos != std::string::npos) {
+                pos += std::string("refresh_token=").length();
+                size_t end = cookies.find(";", pos);
+                if (end == std::string::npos) end = cookies.length();
+                refreshToken = cookies.substr(pos, end - pos);
+            }
+        }
+
+        // Удаляем Refresh Token из базы данных
+        if (!refreshToken.empty()) {
+            std::string refreshHash = hashToken(refreshToken);
+            std::string deleteSQL =
+                "DELETE FROM refresh_tokens WHERE token_hash = '" + refreshHash + "';";
+            executeSQL(db, deleteSQL);
         }
 
         if (!token.empty()) {
@@ -684,7 +715,7 @@ int main() {
 
         res.headers.emplace("Set-Cookie",
             "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0");
-        });
+    });
 
     std::cout << "Сервер запущен на https://localhost:8080" << std::endl;
     std::cout << "Для регистрации: POST /register" << std::endl;

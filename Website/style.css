@@ -101,3 +101,26 @@ input[type="submit"]:hover,
     font-weight: bold;
     margin-left: 2px;
 }
+
+
+/* Экран авторизованного пользователя */
+#profileView {
+    text-align: center;
+}
+
+#profileView h2 {
+    color: #f84184;
+    font-family: "Calibri", Arial, sans-serif;
+    font-size: 1.4em;
+    margin: 5px 0 15px;
+}
+
+#profileView p {
+    color: #f84184;
+    font-family: "Calibri", Arial, sans-serif;
+    margin: 10px 0 15px;
+}
+
+#profileName {
+    font-weight: bold;
+}
